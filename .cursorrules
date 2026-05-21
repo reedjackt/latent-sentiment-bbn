@@ -1,0 +1,45 @@
+You are working on latent-sentiment-bbn: a production-style local data and ML system for Bayesian lead scoring.
+
+Project intent:
+- Build a senior-looking monorepo, not a pile of loose scripts.
+- Simulate an enterprise lead-scoring workflow locally with DuckDB as the warehouse, dbt as the transformation layer, Polars for feature prep, pgmpy for Bayesian belief network modeling, and FastAPI for inference.
+- Preserve the core narrative: messy synthetic marketing leads contain hidden structure from a latent True_Consumer_Sentiment variable, but that variable must not appear in the final raw data.
+
+Architecture expectations:
+- Store local warehouse files under data/.
+- Keep dbt assets under dbt_pipeline/ with models, dbt_project.yml, and DuckDB profile/configuration.
+- Keep application code under src/ with clear domains:
+  - src/api/ for FastAPI routes, startup/lifespan model loading, service logic, and mock enrichment.
+  - src/data_gen/ for synthetic lead generation and warehouse loading.
+  - src/models/ for discretization, structure learning, parameter estimation, inference, and saved artifacts.
+- Keep tests under tests/ and prefer pytest.
+- Use pyproject.toml and uv-compatible workflows for dependency and environment management. Do not add requirements.txt unless explicitly requested.
+
+Implementation priorities by phase:
+1. Synthetic data and mock warehouse:
+   - Generate about 50,000 messy lead rows using NumPy and Polars.
+   - Include realistic dirty strings, missing values, continuous metrics, and categorical marketing attributes.
+   - Embed conditional probability structure using a latent sentiment variable, then drop that latent column before writing raw_leads.duckdb.
+2. dbt transformation layer:
+   - Create reproducible staging and mart models against DuckDB.
+   - Clean strings and standardize categories in SQL, especially persona/job-title style fields.
+   - Preserve meaningful missingness such as null company_size when it represents uncertainty for downstream inference.
+3. Modeling core:
+   - Use Polars lazy operations where practical for warehouse reads and feature preparation.
+   - Discretize continuous features with explicit bins using cut/qcut-style logic.
+   - Train pgmpy structure with hill-climb search and BIC, then estimate CPTs with Bayesian/discrete estimation.
+   - Serialize trained model artifacts predictably under src/models/artifacts/.
+4. FastAPI enrichment service:
+   - Expose POST /v1/predict-lead.
+   - Load model.pkl once during FastAPI lifespan/startup, not per request.
+   - Return posterior conversion probability as clean JSON.
+   - If critical evidence such as company_size is missing and model uncertainty is too high, call a mock Clearbit-style enrichment service and update evidence before inference.
+
+Coding standards:
+- Prefer small, typed Python functions with explicit inputs and outputs.
+- Use pathlib for paths and keep paths relative to the repository root or configurable.
+- Use Polars for dataframe work unless a library specifically requires pandas.
+- Avoid hard-coded absolute paths, hidden global state, and network dependencies in tests.
+- Keep generated data, model artifacts, and DuckDB files out of git unless the user explicitly asks to commit sample artifacts.
+- Add focused tests for data shape/contracts, dbt-facing assumptions where practical, model inference behavior, and FastAPI responses.
+- Favor clear reproducible commands documented in README.md for each phase.

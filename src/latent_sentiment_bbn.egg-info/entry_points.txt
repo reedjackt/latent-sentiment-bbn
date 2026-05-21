@@ -1,0 +1,3 @@
+[console_scripts]
+latent-sentiment-api = api.main:run
+latent-sentiment-bbn = latent_sentiment_bbn:main

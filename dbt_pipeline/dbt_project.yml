@@ -1,0 +1,15 @@
+name: latent_sentiment
+version: 1.0.0
+config-version: 2
+
+profile: latent_sentiment
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+
+models:
+  latent_sentiment:
+    +materialized: view

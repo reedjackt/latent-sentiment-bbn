@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+data/*.duckdb
+src/models/artifacts/*.pkl
+dbt_pipeline/target/
+dbt_pipeline/logs/
+dbt_pipeline/dbt_packages/

@@ -1,0 +1,10 @@
+dbt-core>=1.9.0
+dbt-duckdb>=1.9.0
+duckdb>=1.5.2
+numpy>=2.0.0
+pyarrow>=18.0.0
+fastapi>=0.136.1
+pgmpy>=1.1.2
+polars>=1.40.1
+pydantic>=2.13.4
+uvicorn>=0.47.0

@@ -1,0 +1,42 @@
+[project]
+name = "latent-sentiment-bbn"
+version = "0.1.0"
+description = "Latent sentiment Bayesian belief network with DuckDB warehouse, dbt, and FastAPI inference."
+readme = "README.md"
+authors = [
+    { name = "Jack Reed", email = "jackreed@umich.edu" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "dbt-core>=1.9.0",
+    "dbt-duckdb>=1.9.0",
+    "duckdb>=1.5.2",
+    "numpy>=2.0.0",
+    "pyarrow>=18.0.0",
+    "fastapi>=0.136.1",
+    "pgmpy>=1.1.2",
+    "polars>=1.40.1",
+    "pydantic>=2.13.4",
+    "uvicorn>=0.47.0",
+]
+
+[project.scripts]
+latent-sentiment-bbn = "latent_sentiment_bbn:main"
+latent-sentiment-api = "api.main:run"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.0",
+    "pytest>=8.3.0",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
