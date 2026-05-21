@@ -29,12 +29,12 @@ End-to-end pipeline for inferring latent customer sentiment from firmographics a
 ```mermaid
 flowchart LR
   subgraph ingest
-    DG[data_gen/generate.py]
-    DG --> DW[(data/warehouse.duckdb)]
+    DG[scripts/generate_raw_leads.py]
+    DG --> DW[(data/raw_leads.duckdb)]
   end
   subgraph transform
     DW --> DBT[dbt_pipeline]
-    DBT --> MARTS[stg_accounts + marts]
+    DBT --> MARTS[stg_leads + marts]
   end
   subgraph ml
     MARTS --> TRAIN[models/train.py]
@@ -47,6 +47,12 @@ flowchart LR
   end
 ```
 
+## Structure Learning Constraints
+
+The BBN learns observed-to-observed edges from a whitelist before adding the hidden `latent_sentiment` node and fitting parameters with EM. Exogenous context variables such as channel, campaign tier, region, company size, and job title are allowed to bypass the latent variable and point directly into engagement signals, sentiment proxies, and the conversion outcome. That keeps the model honest about real marketing mechanics: context can change exposure, buying authority, routing, and qualification even when two leads share the same hidden sentiment.
+
+Signal-to-signal edges are only allowed where they match a plausible funnel direction, such as web engagement preceding reply behavior, proxy score, or demo request. The hill-climb search still applies `max_indegree`, so these bypasses expand the candidate graph enough to avoid over-attributing everything to latent sentiment without letting arbitrary observed edges dominate the structure.
+
 ## Quick start
 
 ```bash
@@ -54,10 +60,13 @@ flowchart LR
 uv sync --all-groups
 
 # Seed local DuckDB warehouse
-uv run python -m data_gen.generate
+uv run python scripts/generate_raw_leads.py --rows 50000
 
-# Run dbt from the pipeline directory
-cd dbt_pipeline && uv run dbt run
+# Clean leads for model training
+uv run python scripts/clean_data.py --skip-inspect
+
+# Run dbt against the local DuckDB warehouse
+uv run dbt run --project-dir dbt_pipeline --profiles-dir dbt_pipeline
 
 # Train BBN and write model.pkl
 uv run python -m models.train

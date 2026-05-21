@@ -4,11 +4,13 @@ sources:
   - name: raw
     schema: main
     tables:
-      - name: accounts
-        identifier: raw_accounts
+      - name: leads
+        identifier: raw_leads
 
 models:
-  - name: stg_accounts
+  - name: stg_leads
     columns:
-      - name: account_id
-        tests: [not_null, unique]
+      - name: lead_id_clean
+        tests: [not_null]
+      - name: demo_requested_bool
+        tests: [not_null]

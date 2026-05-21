@@ -3,6 +3,6 @@ latent_sentiment:
   outputs:
     dev:
       type: duckdb
-      path: ../data/warehouse.duckdb
+      path: data/raw_leads.duckdb
       schema: main
       threads: 4
