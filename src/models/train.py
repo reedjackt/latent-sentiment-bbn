@@ -45,6 +45,10 @@ from models.structure import (
     learn_structure_and_fit_parameters,
     prepare_observed_training_frame,
 )
+from models.validation import (
+    evaluate_model_on_splits,
+    save_validation_report,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CLEAN_LEADS_PATH = REPO_ROOT / "data" / "clean_leads.parquet"
@@ -237,11 +241,21 @@ def main() -> None:
         modeling_frames.train,
         split_counts_by_name=split_counts(modeling_frames.split_df),
     )
+    validation_report = evaluate_model_on_splits(
+        result.model,
+        {
+            VALIDATION_SPLIT: modeling_frames.validation,
+            TEST_SPLIT: modeling_frames.test,
+        },
+        result.constraints,
+    )
     model_path = save_model(result.model)
     metadata_path = save_training_metadata(result)
+    validation_path = save_validation_report(validation_report)
     print(f"Saved model to {model_path}")
     print(f"Saved discretization config to {discretization_path}")
     print(f"Saved training metadata to {metadata_path}")
+    print(f"Saved validation report to {validation_path}")
 
 
 def _sorted_edges(edges: object) -> list[list[str]]:
