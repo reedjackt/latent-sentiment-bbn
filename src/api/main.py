@@ -1,25 +1,15 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException
 
-from api.services import load_bbn_model, mock_clearbit_enrich
+from api.schemas import EnrichRequest, PredictRequest, PredictResponse
+from api.services import mock_clearbit_enrich, predict_lead
 
 app = FastAPI(
     title="Latent Sentiment BBN",
     description="Infer latent sentiment from firmographics and engagement signals.",
     version="0.1.0",
 )
-
-
-class EnrichRequest(BaseModel):
-    domain: str = Field(..., examples=["acme.com"])
-
-
-class PredictRequest(BaseModel):
-    domain: str
-    page_views: int = Field(ge=0, default=0)
-    email_opens: int = Field(ge=0, default=0)
 
 
 @app.get("/health")
@@ -32,21 +22,12 @@ def enrich(body: EnrichRequest) -> dict[str, str | int | None]:
     return mock_clearbit_enrich(body.domain)
 
 
-@app.post("/predict")
-def predict(body: PredictRequest) -> dict[str, object]:
-    model = load_bbn_model()
-    _ = model  # inference wiring lands in a follow-up change
-    firmographics = mock_clearbit_enrich(body.domain)
-    return {
-        "domain": body.domain,
-        "firmographics": firmographics,
-        "signals": {
-            "page_views": body.page_views,
-            "email_opens": body.email_opens,
-        },
-        "latent_sentiment": "neutral",
-        "note": "Placeholder response until BBN inference is connected.",
-    }
+@app.post("/predict", response_model=PredictResponse)
+def predict(body: PredictRequest) -> PredictResponse:
+    try:
+        return predict_lead(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def run() -> None:
