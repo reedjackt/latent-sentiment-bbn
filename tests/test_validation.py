@@ -13,6 +13,7 @@ from models.validation import (
     check_cpts,
     check_structure,
     classification_metrics,
+    evaluate_model_comparison,
     evaluate_model_on_splits,
     roc_auc,
     save_validation_report,
@@ -77,6 +78,48 @@ def test_validation_report_scores_splits_and_persists_artifact(tmp_path) -> None
     assert payload["splits"]["validation"]["metrics"]["brier_score"] < 0.13
     assert payload["structure"]["honors_forbidden_edges"] is True
     assert payload["structure"]["missing_latent_edges"] == []
+    assert payload["cpt_checks"]["cpd_count"] == 3
+
+
+def test_model_comparison_report_includes_baselines_and_summary(tmp_path) -> None:
+    model = _latent_validation_model()
+    frame = pd.DataFrame(
+        {
+            "web_session_band": ["short", "deep", "deep", "short"],
+            TARGET_COLUMN: ["false", "true", "true", "false"],
+        }
+    )
+    splits = {"validation": frame.iloc[:2], "test": frame.iloc[2:]}
+
+    report = evaluate_model_comparison(
+        model,
+        {
+            "random_forest": {
+                "validation": [0.2, 0.8],
+                "test": [0.7, 0.3],
+            },
+            "xgboost": {
+                "validation": [0.1, 0.9],
+                "test": [0.8, 0.2],
+            },
+        },
+        splits,
+        build_structure_constraints(("web_session_band", TARGET_COLUMN)),
+    )
+    report_path = save_validation_report(report, tmp_path / "model_validation.json")
+    payload = json.loads(report_path.read_text())
+
+    assert set(payload["splits"]["validation"]) == {
+        "bbn",
+        "random_forest",
+        "xgboost",
+    }
+    assert (
+        payload["splits"]["validation"]["bbn"]["metrics"].keys()
+        == payload["splits"]["validation"]["random_forest"]["metrics"].keys()
+    )
+    assert payload["comparison_summary"]["validation"]["brier_score"]["model"]
+    assert payload["structure"]["honors_forbidden_edges"] is True
     assert payload["cpt_checks"]["cpd_count"] == 3
 
 

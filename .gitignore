@@ -5,6 +5,8 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 data/*.duckdb
+data/*.parquet
+data/sample_leads.csv
 src/models/artifacts/*.pkl
 dbt_pipeline/target/
 dbt_pipeline/logs/

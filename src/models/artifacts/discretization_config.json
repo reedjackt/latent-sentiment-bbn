@@ -1,0 +1,20 @@
+{
+  "rules": [
+    {
+      "source_column": "web_session_seconds_clean",
+      "output_column": "web_session_band",
+      "labels": [
+        "short",
+        "medium",
+        "engaged",
+        "deep"
+      ],
+      "upper_bounds": [
+        82.80588936026795,
+        193.66280675017435,
+        451.43246107901615
+      ],
+      "missing_label": "missing"
+    }
+  ]
+}

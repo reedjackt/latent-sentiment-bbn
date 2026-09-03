@@ -1,0 +1,43 @@
+{
+  "observed_columns": [
+    "marketing_channel_clean",
+    "campaign_tier_clean",
+    "region_clean",
+    "employee_size_bucket",
+    "job_title_clean",
+    "web_session_band",
+    "demo_requested_bool"
+  ],
+  "learned_observed_edges": [
+    [
+      "web_session_band",
+      "demo_requested_bool"
+    ]
+  ],
+  "latent_edges": [
+    [
+      "latent_sentiment",
+      "demo_requested_bool"
+    ],
+    [
+      "latent_sentiment",
+      "web_session_band"
+    ]
+  ],
+  "forbidden_edge_count": 31,
+  "search_space_edge_count": 11,
+  "bic_score": -369374.83141562185,
+  "pgmpy_version": "1.1.2",
+  "discretization_config_path": "/home/jackreed/BBN/latent-sentiment-bbn/src/models/artifacts/discretization_config.json",
+  "feature_contract": {
+    "scoring_timestamp_column": "captured_at",
+    "target_column": "demo_requested_bool",
+    "scoring_moment": "lead_capture"
+  },
+  "split_counts": {
+    "excluded_missing_timestamp": 1097,
+    "train": 34232,
+    "test": 7336,
+    "validation": 7335
+  }
+}

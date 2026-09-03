@@ -12,6 +12,10 @@ import pandas as pd
 import polars as pl
 from pgmpy.models import DiscreteBayesianNetwork
 
+from models.baselines import (
+    predict_all_baselines,
+    train_discriminative_baselines,
+)
 from models.discretization import (
     DISCRETIZATION_CONFIG_PATH,
     DEFAULT_BIN_SPECS,
@@ -46,7 +50,7 @@ from models.structure import (
     prepare_observed_training_frame,
 )
 from models.validation import (
-    evaluate_model_on_splits,
+    evaluate_model_comparison,
     save_validation_report,
 )
 
@@ -54,6 +58,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CLEAN_LEADS_PATH = REPO_ROOT / "data" / "clean_leads.parquet"
 ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
 ARTIFACT_PATH = ARTIFACT_DIR / "model.pkl"
+MODEL_PATH = ARTIFACT_PATH  # notebook / legacy alias
 METADATA_PATH = ARTIFACT_DIR / "model_metadata.json"
 
 
@@ -233,20 +238,41 @@ def save_training_metadata(
     return path
 
 
+def structure_config_for_train_rows(train_rows: int) -> StructureLearningConfig:
+    """Scale EM iterations down on large training sets to keep fitting practical."""
+    if train_rows >= 10_000:
+        return StructureLearningConfig(em_max_iter=15, show_progress=True)
+    if train_rows >= 2_000:
+        return StructureLearningConfig(em_max_iter=30, show_progress=True)
+    return StructureLearningConfig()
+
+
 def main() -> None:
     cleaned_df = load_cleaned_leads()
     modeling_frames = prepare_temporal_modeling_frames(cleaned_df)
     discretization_path = save_discretization_config(modeling_frames.discretization_config)
+    structure_config = structure_config_for_train_rows(len(modeling_frames.train))
     result = train_model(
         modeling_frames.train,
+        config=structure_config,
         split_counts_by_name=split_counts(modeling_frames.split_df),
     )
-    validation_report = evaluate_model_on_splits(
+    heldout_splits = {
+        VALIDATION_SPLIT: modeling_frames.validation,
+        TEST_SPLIT: modeling_frames.test,
+    }
+    baseline_models = train_discriminative_baselines(modeling_frames.train)
+    baseline_predictions = {model_name: {} for model_name in baseline_models}
+    for split_name, frame in heldout_splits.items():
+        for model_name, predictions in predict_all_baselines(
+            baseline_models,
+            frame,
+        ).items():
+            baseline_predictions[model_name][split_name] = predictions
+    validation_report = evaluate_model_comparison(
         result.model,
-        {
-            VALIDATION_SPLIT: modeling_frames.validation,
-            TEST_SPLIT: modeling_frames.test,
-        },
+        baseline_predictions,
+        heldout_splits,
         result.constraints,
     )
     model_path = save_model(result.model)

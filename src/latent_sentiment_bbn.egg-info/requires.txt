@@ -8,3 +8,7 @@ pgmpy>=1.1.2
 polars>=1.40.1
 pydantic>=2.13.4
 uvicorn>=0.47.0
+scikit-learn>=1.8.0
+xgboost>=3.2.0
+matplotlib>=3.10.9
+seaborn>=0.13.2

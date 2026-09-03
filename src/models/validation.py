@@ -42,6 +42,16 @@ class ValidationReport:
     cpt_checks: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class ModelComparisonReport:
+    """Serializable report comparing the BBN against discriminative baselines."""
+
+    splits: dict[str, dict[str, SplitValidationResult]]
+    comparison_summary: dict[str, dict[str, dict[str, float | str]]]
+    structure: dict[str, Any]
+    cpt_checks: dict[str, Any]
+
+
 def evaluate_model_on_splits(
     model: Any,
     splits: Mapping[str, pd.DataFrame],
@@ -59,6 +69,38 @@ def evaluate_model_on_splits(
     )
 
 
+def evaluate_model_comparison(
+    bbn_model: Any,
+    baseline_predictions: Mapping[str, Mapping[str, Sequence[float]]],
+    splits: Mapping[str, pd.DataFrame],
+    constraints: StructureConstraints | None = None,
+    *,
+    bbn_model_name: str = "bbn",
+) -> ModelComparisonReport:
+    """Evaluate BBN and discriminative baselines on shared held-out splits."""
+    split_results: dict[str, dict[str, SplitValidationResult]] = {}
+    for split_name, frame in splits.items():
+        split_results[split_name] = {
+            bbn_model_name: evaluate_split(bbn_model, frame),
+        }
+        for baseline_name, predictions_by_split in baseline_predictions.items():
+            if split_name not in predictions_by_split:
+                raise ValueError(
+                    f"Missing {baseline_name!r} predictions for split {split_name!r}"
+                )
+            split_results[split_name][baseline_name] = evaluate_predictions(
+                frame,
+                predictions_by_split[split_name],
+            )
+
+    return ModelComparisonReport(
+        splits=split_results,
+        comparison_summary=comparison_summary(split_results),
+        structure=check_structure(bbn_model, constraints),
+        cpt_checks=check_cpts(bbn_model),
+    )
+
+
 def evaluate_split(
     model: Any,
     frame: pd.DataFrame,
@@ -69,14 +111,35 @@ def evaluate_split(
     if target_column not in frame.columns:
         raise ValueError(f"Validation frame is missing target column: {target_column}")
 
-    y_true = [_target_to_int(value) for value in frame[target_column]]
     predictions, warnings = predict_probabilities(model, frame, target_column=target_column)
+    return evaluate_predictions(
+        frame,
+        predictions,
+        target_column=target_column,
+        warnings=warnings,
+    )
+
+
+def evaluate_predictions(
+    frame: pd.DataFrame,
+    probabilities: Sequence[float],
+    *,
+    target_column: str = TARGET_COLUMN,
+    warnings: Sequence[str] = (),
+) -> SplitValidationResult:
+    """Evaluate precomputed P(target=true) predictions for one split."""
+    if target_column not in frame.columns:
+        raise ValueError(f"Validation frame is missing target column: {target_column}")
+
+    y_true = [_target_to_int(value) for value in frame[target_column]]
+    if len(y_true) != len(probabilities):
+        raise ValueError("Validation labels and predictions must have the same length")
     return SplitValidationResult(
         row_count=len(y_true),
         target_prevalence=_mean(y_true),
-        metrics=classification_metrics(y_true, predictions),
-        calibration_bins=calibration_bins(y_true, predictions),
-        warnings=warnings,
+        metrics=classification_metrics(y_true, probabilities),
+        calibration_bins=calibration_bins(y_true, probabilities),
+        warnings=list(warnings),
     )
 
 
@@ -236,6 +299,46 @@ def average_precision(y_true: Sequence[int], probabilities: Sequence[float]) -> 
     return precision_sum / positives
 
 
+def comparison_summary(
+    split_results: Mapping[str, Mapping[str, SplitValidationResult]],
+) -> dict[str, dict[str, dict[str, float | str]]]:
+    """Return the best model per split for each primary validation metric."""
+    higher_is_better = {
+        "roc_auc",
+        "pr_auc",
+        "accuracy_at_0_5",
+        "f1_at_0_5",
+    }
+    lower_is_better = {
+        "log_loss",
+        "brier_score",
+    }
+    summary: dict[str, dict[str, dict[str, float | str]]] = {}
+
+    for split_name, results_by_model in split_results.items():
+        summary[split_name] = {}
+        metric_names = higher_is_better | lower_is_better
+        for metric_name in sorted(metric_names):
+            candidates = [
+                (model_name, result.metrics.get(metric_name))
+                for model_name, result in results_by_model.items()
+                if result.metrics.get(metric_name) is not None
+            ]
+            if not candidates:
+                continue
+            best_model, best_value = (
+                max(candidates, key=lambda item: item[1])
+                if metric_name in higher_is_better
+                else min(candidates, key=lambda item: item[1])
+            )
+            summary[split_name][metric_name] = {
+                "model": best_model,
+                "value": float(best_value),
+            }
+
+    return summary
+
+
 def check_structure(
     model: Any,
     constraints: StructureConstraints | None = None,
@@ -281,12 +384,33 @@ def check_cpts(model: Any, *, deterministic_threshold: float = 0.995) -> dict[st
 
 
 def save_validation_report(
-    report: ValidationReport,
+    report: ValidationReport | ModelComparisonReport,
     path: Path = VALIDATION_REPORT_PATH,
 ) -> Path:
     """Persist validation metrics and diagnostics as JSON."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
+    payload = _validation_report_payload(report)
+    path.write_text(json.dumps(payload, indent=2) + "\n")
+    return path
+
+
+def _validation_report_payload(
+    report: ValidationReport | ModelComparisonReport,
+) -> dict[str, Any]:
+    if isinstance(report, ModelComparisonReport):
+        return {
+            "splits": {
+                split_name: {
+                    model_name: asdict(result)
+                    for model_name, result in results_by_model.items()
+                }
+                for split_name, results_by_model in report.splits.items()
+            },
+            "comparison_summary": report.comparison_summary,
+            "structure": report.structure,
+            "cpt_checks": report.cpt_checks,
+        }
+    return {
         "splits": {
             split_name: asdict(result)
             for split_name, result in report.splits.items()
@@ -294,8 +418,6 @@ def save_validation_report(
         "structure": report.structure,
         "cpt_checks": report.cpt_checks,
     }
-    path.write_text(json.dumps(payload, indent=2) + "\n")
-    return path
 
 
 def _evidence_columns(

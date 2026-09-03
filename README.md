@@ -53,6 +53,25 @@ The BBN learns observed-to-observed edges from a whitelist before adding the hid
 
 Signal-to-signal edges are only allowed where they match a plausible funnel direction, such as web engagement preceding reply behavior, proxy score, or demo request. The hill-climb search still applies `max_indegree`, so these bypasses expand the candidate graph enough to avoid over-attributing everything to latent sentiment without letting arbitrary observed edges dominate the structure.
 
+## Model evaluation
+
+Models are evaluated on **temporal held-out splits** (oldest 70% train, next 15% validation, newest 15% test) with preprocessing fit on train only. The BBN is compared against **random forest** and **XGBoost** baselines on the same splits. Probabilistic quality (log loss, Brier score) is primary because the API returns calibrated posteriors, not just rankings.
+
+**Dataset:** 50,000 synthetic leads (`scripts/generate_raw_leads.py` → `scripts/clean_data.py`). After temporal splitting: 34,232 train / 7,335 validation / 7,336 test (1,097 rows excluded for missing `captured_at`).
+
+| Split | Model | ROC AUC | PR AUC | Log loss | Brier |
+|-------|-------|---------|--------|----------|-------|
+| Validation | **BBN** | **0.581** | **0.518** | **0.678** | **0.243** |
+| Validation | Random forest | 0.572 | 0.513 | 0.683 | 0.245 |
+| Validation | XGBoost | 0.579 | 0.512 | 0.679 | 0.243 |
+| Test | **BBN** | **0.589** | 0.501 | **0.672** | **0.240** |
+| Test | Random forest | 0.579 | 0.501 | 0.678 | 0.242 |
+| Test | XGBoost | 0.587 | 0.505 | 0.674 | 0.240 |
+
+On this 50k run the BBN leads on probabilistic metrics and ROC AUC on both splits. Full diagnostics (calibration bins, structure checks) are saved to `src/models/artifacts/model_validation.json` during training and visualized in `notebooks/bbn_pipeline_benchmark.ipynb`.
+
+Training at 50k+ rows scales EM iterations down automatically (`structure_config_for_train_rows` in `models/train.py`) so parameter fitting stays practical without changing the structure-learning path.
+
 ## Quick start
 
 ```bash
@@ -76,6 +95,9 @@ uv run latent-sentiment-api
 
 # Run tests
 uv run pytest
+
+# Explore BBN benchmarks, calibration, and inference latency (Jupyter)
+# Open notebooks/bbn_pipeline_benchmark.ipynb from repo root (kernel cwd = repo root)
 ```
 
 ## Legacy entry point

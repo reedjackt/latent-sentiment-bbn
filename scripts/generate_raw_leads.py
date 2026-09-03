@@ -17,7 +17,6 @@ import argparse
 import math
 from pathlib import Path
 
-import duckdb
 import numpy as np
 import polars as pl
 
@@ -264,6 +263,8 @@ def build_leads_df(n: int, seed: int) -> tuple[pl.DataFrame, pl.DataFrame]:
 
 
 def materialize_duckdb(df: pl.DataFrame, db_path: Path) -> None:
+    import duckdb
+
     db_path.parent.mkdir(parents=True, exist_ok=True)
     if db_path.exists():
         db_path.unlink()
@@ -276,6 +277,20 @@ def materialize_duckdb(df: pl.DataFrame, db_path: Path) -> None:
         con.close()
 
 
+def _maybe_write_csv(df: pl.DataFrame, csv_path: Path | None) -> None:
+    if csv_path is None:
+        return
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    df.write_csv(csv_path)
+
+
+def _maybe_write_parquet(df: pl.DataFrame, parquet_path: Path | None) -> None:
+    if parquet_path is None:
+        return
+    parquet_path.parent.mkdir(parents=True, exist_ok=True)
+    df.write_parquet(parquet_path)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate synthetic raw marketing leads into DuckDB.")
     parser.add_argument("--rows", type=int, default=DEFAULT_ROWS, help="Number of lead rows to generate.")
@@ -286,13 +301,48 @@ def main() -> None:
         default=DEFAULT_DB_PATH,
         help=f"Output DuckDB file (default: {DEFAULT_DB_PATH})",
     )
+    parser.add_argument(
+        "--csv-path",
+        type=Path,
+        default=None,
+        help="Optional output CSV path (writes the same raw_leads table as a flat file).",
+    )
+    parser.add_argument(
+        "--parquet-path",
+        type=Path,
+        default=None,
+        help="Optional output Parquet path (writes the same raw_leads table as a flat file).",
+    )
+    parser.add_argument(
+        "--no-duckdb",
+        action="store_true",
+        help="Skip writing DuckDB (useful for quick EDA CSV/Parquet materialization).",
+    )
     args = parser.parse_args()
 
     if args.rows < 1:
         raise SystemExit("--rows must be >= 1")
 
     _, warehouse_df = build_leads_df(args.rows, args.seed)
-    materialize_duckdb(warehouse_df, args.db_path.resolve())
+    if "True_Consumer_Sentiment" in warehouse_df.columns:
+        raise SystemExit("True_Consumer_Sentiment must not appear in warehouse df")
+
+    _maybe_write_csv(warehouse_df, args.csv_path.resolve() if args.csv_path else None)
+    _maybe_write_parquet(warehouse_df, args.parquet_path.resolve() if args.parquet_path else None)
+
+    if not args.no_duckdb:
+        materialize_duckdb(warehouse_df, args.db_path.resolve())
+
+    if args.no_duckdb:
+        print(f"Generated {len(warehouse_df)} rows (DuckDB skipped)")
+        if args.csv_path:
+            print(f"Wrote CSV to {args.csv_path.resolve()}")
+        if args.parquet_path:
+            print(f"Wrote Parquet to {args.parquet_path.resolve()}")
+        print("Columns:", ", ".join(warehouse_df.columns))
+        return
+
+    import duckdb
 
     con = duckdb.connect(str(args.db_path))
     try:
@@ -302,6 +352,10 @@ def main() -> None:
         con.close()
 
     print(f"Wrote {cnt} rows to {args.db_path.resolve()}")
+    if args.csv_path:
+        print(f"Wrote CSV to {args.csv_path.resolve()}")
+    if args.parquet_path:
+        print(f"Wrote Parquet to {args.parquet_path.resolve()}")
     print("Columns:", ", ".join(cols))
     if "True_Consumer_Sentiment" in cols:
         raise SystemExit("True_Consumer_Sentiment must not appear in DuckDB")
